@@ -1,0 +1,172 @@
+# FrEVL Training Configuration for VQA v2
+
+# Model Configuration
+model:
+  name: frevl-base
+  clip_model: ViT-B/32
+  hidden_dim: 768
+  num_layers: 6
+  num_heads: 12
+  dropout: 0.1
+  num_vqa_answers: 3129
+  use_gradient_checkpointing: false
+  use_flash_attention: false
+  compile_model: false
+
+# Dataset Configuration  
+dataset:
+  name: vqa
+  version: v2
+  data_root: ./data
+  cache_embeddings: true
+  cache_dir: ./cache
+  use_augmentation: true
+  max_samples: null  # Use all samples
+
+# Training Configuration
+training:
+  # Batch size and accumulation
+  batch_size: 128
+  gradient_accumulation_steps: 1
+  
+  # Optimization
+  optimizer: adamw
+  learning_rate: 1e-4
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  
+  # Scheduler
+  scheduler: cosine
+  warmup_ratio: 0.1
+  
+  # Training duration
+  epochs: 20
+  max_steps: -1  # -1 means use epochs
+  
+  # Mixed precision
+  mixed_precision: true
+  fp16_opt_level: O1
+  
+  # Regularization
+  label_smoothing: 0.1
+  mixup_alpha: 0.2
+  cutmix_prob: 0.0
+  
+  # Early stopping
+  early_stopping_patience: 5
+  early_stopping_metric: val_accuracy
+  early_stopping_mode: max
+
+# Evaluation Configuration
+evaluation:
+  batch_size: 256
+  eval_steps: 500
+  save_best_only: true
+  metric_for_best_model: accuracy
+  greater_is_better: true
+  compute_attention: false
+
+# Data Loading
+dataloader:
+  num_workers: 8
+  pin_memory: true
+  prefetch_factor: 2
+  persistent_workers: true
+  drop_last: true  # For training only
+
+# Distributed Training
+distributed:
+  enabled: false
+  backend: nccl
+  world_size: 1
+  find_unused_parameters: true
+  gradient_as_bucket_view: true
+
+# Logging and Monitoring
+logging:
+  log_level: INFO
+  log_interval: 50
+  log_dir: ./logs
+  
+  # TensorBoard
+  use_tensorboard: true
+  tensorboard_dir: ./runs
+  
+  # Weights & Biases
+  use_wandb: true
+  wandb_project: frevl-vqa
+  wandb_entity: null
+  wandb_run_name: null
+  wandb_tags: [vqa, frevl-base]
+  
+  # Model checkpointing
+  save_interval: 1000
+  save_total_limit: 5
+  checkpoint_dir: ./checkpoints
+
+# Paths
+paths:
+  output_dir: ./outputs
+  cache_dir: ./cache
+  checkpoint_dir: ./checkpoints
+  log_dir: ./logs
+  
+# Reproducibility
+seed: 42
+deterministic: true
+
+# Hardware
+device: cuda
+gpu_ids: [0]
+num_gpu: 1
+
+# Inference Configuration (for evaluation)
+inference:
+  beam_size: 1
+  max_length: 20
+  temperature: 1.0
+  top_k: 0
+  top_p: 1.0
+
+# Advanced Options
+advanced:
+  # Gradient checkpointing (saves memory)
+  gradient_checkpointing: false
+  
+  # Lookahead optimizer
+  use_lookahead: false
+  lookahead_k: 5
+  lookahead_alpha: 0.5
+  
+  # LAMB optimizer (for large batch)
+  use_lamb: false
+  
+  # Exponential Moving Average
+  use_ema: false
+  ema_decay: 0.9999
+  
+  # Stochastic Weight Averaging
+  use_swa: false
+  swa_start_epoch: 10
+  swa_lr: 1e-5
+  
+  # Adversarial training
+  use_adversarial: false
+  adv_epsilon: 0.01
+  
+  # Knowledge distillation
+  use_distillation: false
+  teacher_model: null
+  distillation_alpha: 0.5
+  distillation_temperature: 5.0
+
+# Experiment tracking
+experiment:
+  name: frevl_vqa_baseline
+  description: "Baseline FrEVL model trained on VQA v2"
+  tags: [baseline, vqa, frozen-clip]
+  notes: |
+    This configuration reproduces the paper results.
+    Expected validation accuracy: 71.2%
+    Training time: ~4 hours on V100
+    Inference speed: 12ms per sample

@@ -1,20 +1,17 @@
-# FrEVL: Frozen Pretrained Embeddings for Efficient Vision-Language Understanding
+# FrEVL: Frozen Pretrained Embeddings for Efficient Vision-Language Understanding [ICCVW25]
 
 <div align="center">
   
-  <img src="https://github.com/EmmanuelleB985/FrEVL/assets/placeholder/frevl-banner.png" alt="FrEVL Banner" width="100%">
-  
-  <h3>⚡ 85-95% SOTA Performance with 10× Fewer Parameters</h3>
+  <h3>85-95% SOTA Performance with 10× Fewer Parameters</h3>
   
   [![arXiv](https://img.shields.io/badge/arXiv-2508.04469-b31b1b.svg)](https://arxiv.org/pdf/2508.04469)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
   [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
   [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
   [![CLIP](https://img.shields.io/badge/CLIP-OpenAI-green.svg)](https://github.com/openai/CLIP)
-  [![CI/CD](https://github.com/EmmanuelleB985/FrEVL/workflows/CI/badge.svg)](https://github.com/EmmanuelleB985/FrEVL/actions)
-  [![codecov](https://codecov.io/gh/EmmanuelleB985/FrEVL/branch/main/graph/badge.svg)](https://codecov.io/gh/EmmanuelleB985/FrEVL)
+
   
-  **[🚀 Live Demo](https://huggingface.co/spaces/EmmanuelleB985/FrEVL)** | **[📊 Benchmark Results](#-performance-metrics)** | **[📄 Paper](https://arxiv.org/pdf/2508.04469)** | **[🤗 Models](https://huggingface.co/EmmanuelleB985/FrEVL)**
+  **[📄 Paper](https://arxiv.org/pdf/2508.04469)**
 
 </div>
 
@@ -22,7 +19,7 @@
 
 ## Why FrEVL?
 
-FrEVL revolutionizes vision-language understanding by **freezing pretrained CLIP embeddings** and training only a lightweight fusion network. This approach delivers:
+FrEVL is a vision-language understanding by **freezing pretrained CLIP embeddings** and training only a lightweight fusion network. This approach delivers:
 
 - ** 3× faster inference** than ALBEF/BLIP
 - ** 70% lower deployment costs**
@@ -34,12 +31,12 @@ FrEVL revolutionizes vision-language understanding by **freezing pretrained CLIP
 
 <div align="center">
 
-| Model | VQA v2 ↑ | SNLI-VE ↑ | MS-COCO ↑ | Params | Latency (ms) | Memory (GB) | Cost/1M |
-|:------|:---------|:----------|:----------|:-------|:-------------|:------------|:--------|
-| **FrEVL (Ours)** | **71.2** | **78.4** | **85.1** | **68.4M** | **12** | **1.2** | **$20** |
-| ALBEF-Base | 75.8 | 80.1 | 87.3 | 210M | 45 | 4.8 | $68 |
-| BLIP-Base | 78.2 | 81.3 | 89.1 | 223M | 52 | 5.1 | $74 |
-| CLIP-ViL | 70.1 | 76.2 | 83.5 | 428M | 38 | 5.2 | $65 |
+| Model | VQA v2 ↑ | SNLI-VE ↑ | MS-COCO ↑ | Params | Latency (ms) | Memory (GB) | 
+|:------|:---------|:----------|:----------|:-------|:-------------|:------------|
+| **FrEVL (Ours)** | **71.2** | **78.4** | **85.1** | **68.4M** | **12** | **1.2** | 
+| ALBEF-Base | 75.8 | 80.1 | 87.3 | 210M | 45 | 4.8 | 
+| BLIP-Base | 78.2 | 81.3 | 89.1 | 223M | 52 | 5.1 |
+| CLIP-ViL | 70.1 | 76.2 | 83.5 | 428M | 38 | 5.2 | 
 
 </div>
 
@@ -63,6 +60,7 @@ pip install -r requirements.txt
 python scripts/download_models.py --model frevl-base
 ```
 
+### Try It Now!
 
 #### Option 1: Web Interface
 ```bash
@@ -112,14 +110,6 @@ FrEVL's key innovations:
 3. **Efficient Caching**: Precomputed embeddings reduce inference time by 60%
 4. **Mixed Precision**: FP16 training/inference with minimal accuracy loss
 
-## Model Zoo
-
-| Model | Size | VQA v2 | Download | HuggingFace |
-|:------|:-----|:-------|:---------|:------------|
-| FrEVL-Base | 274MB | 71.2 | [Download](https://github.com/EmmanuelleB985/FrEVL/releases/download/v1.0/frevl-base.pt) | [🤗 Hub](https://huggingface.co/EmmanuelleB985/frevl-base) |
-| FrEVL-Large | 512MB | 74.8 | [Download](https://github.com/EmmanuelleB985/FrEVL/releases/download/v1.0/frevl-large.pt) | [🤗 Hub](https://huggingface.co/EmmanuelleB985/frevl-large) |
-| FrEVL-Multilingual | 389MB | 68.5 | [Download](https://github.com/EmmanuelleB985/FrEVL/releases/download/v1.0/frevl-multi.pt) | [🤗 Hub](https://huggingface.co/EmmanuelleB985/frevl-multi) |
-
 ## Training
 
 ### From Scratch
@@ -137,23 +127,6 @@ python train.py \
   --wandb-project frevl
 ```
 
-### Fine-tuning
-```bash
-# Fine-tune on custom dataset
-python finetune.py \
-  --pretrained frevl-base \
-  --data-dir ./custom_data \
-  --output-dir ./checkpoints/custom
-```
-
-### Distributed Training
-```bash
-# Multi-GPU training with DDP
-torchrun --nproc_per_node=4 train_distributed.py \
-  --dataset vqa \
-  --batch-size 512
-```
-
 ## Evaluation
 
 ```bash
@@ -164,7 +137,7 @@ python evaluate.py \
   --split val
 
 # Comprehensive benchmark
-python benchmark.py --model frevl-base --all-datasets
+python benchmark_inference.py --model frevl-base --all-datasets
 ```
 
 ## Deployment
@@ -193,7 +166,7 @@ kubectl get pods -l app=frevl
 ### Cloud Deployment
 ```bash
 # Deploy to AWS SageMaker
-python deploy/sagemaker_deploy.py
+python deploy_aws.py
 
 # Deploy to Google Cloud AI Platform
 gcloud ai-platform models create frevl
@@ -240,6 +213,8 @@ from frevl.tracing import tracer
 with tracer.start_span("inference"):
     result = model.predict(image, text)
 ```
+
+
 
 ## Advanced Features
 
@@ -323,5 +298,4 @@ If you find FrEVL useful in your research, please cite:
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ---

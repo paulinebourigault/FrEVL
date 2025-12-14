@@ -2,7 +2,7 @@
 
 Thank you for your interest in contributing to FrEVL! This document provides guidelines and instructions for contributing to the project.
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Development Setup
 
@@ -44,14 +44,7 @@ git checkout -b feature/your-feature-name
 git checkout -b fix/issue-number-description
 ```
 
-### 2. Make Your Changes
-
-- Write clean, documented code
-- Follow the existing code style
-- Add tests for new functionality
-- Update documentation as needed
-
-### 3. Code Quality Checks
+### 2. Code Quality Checks
 
 Run these before committing:
 
@@ -69,7 +62,7 @@ make test
 make typecheck
 ```
 
-### 4. Commit Your Changes
+### 3. Commit Your Changes
 
 We follow [Conventional Commits](https://www.conventionalcommits.org/):
 
@@ -89,7 +82,7 @@ Commit types:
 - `test`: Adding or updating tests
 - `chore`: Maintenance tasks
 
-### 5. Push and Create Pull Request
+### 4. Push and Create Pull Request
 
 ```bash
 git push origin feature/your-feature-name
@@ -100,23 +93,6 @@ Then create a Pull Request on GitHub with:
 - Link to related issues
 - Screenshots/examples if applicable
 - Test results
-
-## Project Structure
-
-```
-FrEVL/
-├── frevl/              # Main package
-│   ├── model/          # Model implementations
-│   ├── data/           # Data loading and processing
-│   ├── training/       # Training utilities
-│   ├── evaluation/     # Evaluation metrics
-│   └── utils/          # Helper functions
-├── tests/              # Test files
-├── benchmarks/         # Performance benchmarks
-├── examples/           # Usage examples
-├── scripts/            # Utility scripts
-└── docs/               # Documentation
-```
 
 ## Testing
 
@@ -156,7 +132,7 @@ class TestFrEVL:
         pass
 ```
 
-## 📚 Documentation
+## Documentation
 
 ### Docstring Format
 
@@ -262,6 +238,13 @@ Look for issues tagged with `good first issue`:
 2. Code review by maintainer
 3. Address review feedback
 4. Approval and merge
+
+## Recognition
+
+Contributors will be:
+- Added to CONTRIBUTORS.md
+- Mentioned in release notes
+- Given credit in relevant documentation
 
 ## Style Guide
 

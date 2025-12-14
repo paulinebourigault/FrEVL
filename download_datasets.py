@@ -1,613 +1,389 @@
+#!/usr/bin/env python3
 """
-FrEVL Dataset Download and Preparation Script
-Downloads and prepares COCO Captions, VQA v2, and SNLI-VE datasets
+Download datasets for FrEVL training and evaluation
+Supports VQA v2, SNLI-VE, MS-COCO, and more
 """
 
 import os
+import argparse
 import json
-import wget
-import zipfile
 import tarfile
-import shutil
+import zipfile
 from pathlib import Path
-from tqdm import tqdm
+from typing import List, Optional, Dict
 import hashlib
+import shutil
+
 import requests
-from typing import Dict, List, Optional
-import pandas as pd
-import numpy as np
+from tqdm import tqdm
+import gdown
+from huggingface_hub import hf_hub_download, snapshot_download
 
-# ==========================================
-# Dataset URLs and Configuration
-# ==========================================
 
-DATASET_URLS = {
-    'coco': {
-        'train_images': 'http://images.cocodataset.org/zips/train2014.zip',
-        'val_images': 'http://images.cocodataset.org/zips/val2014.zip',
-        'test_images': 'http://images.cocodataset.org/zips/test2015.zip',
-        'train_annotations': 'http://images.cocodataset.org/annotations/annotations_trainval2014.zip',
-        'test_annotations': 'http://images.cocodataset.org/annotations/image_info_test2015.zip',
-        'karpathy_split': 'https://cs.stanford.edu/people/karpathy/deepimagesent/caption_datasets.zip'
+# Dataset URLs and metadata
+DATASETS = {
+    "vqa": {
+        "train_questions": "https://s3.amazonaws.com/cvmlp/vqa/mscoco/vqa/v2_Questions_Train_mscoco.zip",
+        "val_questions": "https://s3.amazonaws.com/cvmlp/vqa/mscoco/vqa/v2_Questions_Val_mscoco.zip",
+        "test_questions": "https://s3.amazonaws.com/cvmlp/vqa/mscoco/vqa/v2_Questions_Test_mscoco.zip",
+        "train_annotations": "https://s3.amazonaws.com/cvmlp/vqa/mscoco/vqa/v2_Annotations_Train_mscoco.zip",
+        "val_annotations": "https://s3.amazonaws.com/cvmlp/vqa/mscoco/vqa/v2_Annotations_Val_mscoco.zip",
+        "size": "2.5GB",
+        "description": "Visual Question Answering v2.0 dataset"
     },
-    'vqa': {
-        'train_questions': 'https://s3.amazonaws.com/cvmlp/vqa/mscoco/vqa/v2_Questions_Train_mscoco.zip',
-        'val_questions': 'https://s3.amazonaws.com/cvmlp/vqa/mscoco/vqa/v2_Questions_Val_mscoco.zip',
-        'test_questions': 'https://s3.amazonaws.com/cvmlp/vqa/mscoco/vqa/v2_Questions_Test_mscoco.zip',
-        'train_annotations': 'https://s3.amazonaws.com/cvmlp/vqa/mscoco/vqa/v2_Annotations_Train_mscoco.zip',
-        'val_annotations': 'https://s3.amazonaws.com/cvmlp/vqa/mscoco/vqa/v2_Annotations_Val_mscoco.zip',
-        'balanced_pairs': 'https://s3.amazonaws.com/cvmlp/vqa/mscoco/vqa/v2_Complementary_Pairs_Train_mscoco.zip'
+    "coco": {
+        "train_images": "http://images.cocodataset.org/zips/train2014.zip",
+        "val_images": "http://images.cocodataset.org/zips/val2014.zip",
+        "test_images": "http://images.cocodataset.org/zips/test2014.zip",
+        "train_annotations": "http://images.cocodataset.org/annotations/annotations_trainval2014.zip",
+        "size": "20GB",
+        "description": "MS-COCO 2014 images and captions"
     },
-    'snli_ve': {
-        'dataset': 'https://github.com/necla-ml/SNLI-VE/archive/master.zip',
-        'flickr30k_images': 'https://forms.illinois.edu/sec/229675',  # Requires manual download
-        'splits': {
-            'train': 'https://raw.githubusercontent.com/necla-ml/SNLI-VE/master/data/snli_ve_train.jsonl',
-            'dev': 'https://raw.githubusercontent.com/necla-ml/SNLI-VE/master/data/snli_ve_dev.jsonl',
-            'test': 'https://raw.githubusercontent.com/necla-ml/SNLI-VE/master/data/snli_ve_test.jsonl'
-        }
+    "snli-ve": {
+        "annotations": "https://github.com/necla-ml/SNLI-VE/archive/refs/heads/master.zip",
+        "flickr30k_notice": "Flickr30k images must be downloaded separately from https://shannon.cs.illinois.edu/DenotationGraph/",
+        "size": "15GB",
+        "description": "SNLI Visual Entailment dataset"
+    },
+    "conceptual-captions": {
+        "train_tsv": "https://storage.googleapis.com/gcc-data/Train/GCC-training.tsv",
+        "validation_tsv": "https://storage.googleapis.com/gcc-data/Validation/GCC-1.1.0-Validation.tsv",
+        "size": "300GB",
+        "description": "Conceptual Captions dataset (URLs only, images need to be downloaded)"
+    },
+    "visual-genome": {
+        "images_part1": "https://cs.stanford.edu/people/rak248/VG_100K_2/images.zip",
+        "images_part2": "https://cs.stanford.edu/people/rak248/VG_100K_2/images2.zip",
+        "annotations": "http://visualgenome.org/static/data/dataset/objects.json.zip",
+        "size": "15GB",
+        "description": "Visual Genome dataset with dense annotations"
     }
+}
+
+# Checksums for verification
+CHECKSUMS = {
+    "vqa_train_questions": "443797f5b45c37873c6ad68dd1885e3a",
+    "vqa_val_questions": "6761dd1a842b1d5e7e4e49bebad78470",
+    "coco_train_images": "0da8c0bd3d6becc4dcb32757491aca88",
+    "coco_val_images": "a3d79f5ed8d289b7a7554ce06a5782b3",
 }
 
 
 class DatasetDownloader:
-    """Handle dataset downloading and extraction"""
+    """Download and prepare datasets for FrEVL"""
     
-    def __init__(self, data_dir: str = './data'):
+    def __init__(self, data_dir: str = "./data", cache_dir: str = "./cache"):
         self.data_dir = Path(data_dir)
+        self.cache_dir = Path(cache_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+    
+    def download_file(
+        self,
+        url: str,
+        output_path: Path,
+        chunk_size: int = 8192,
+        resume: bool = True,
+        verify_checksum: Optional[str] = None
+    ) -> bool:
+        """
+        Download file with progress bar and resume support
         
-    def download_file(self, url: str, dest_path: str, desc: str = None) -> bool:
-        """Download file with progress bar"""
-        if os.path.exists(dest_path):
-            print(f" {dest_path} already exists, skipping download")
-            return True
+        Args:
+            url: URL to download from
+            output_path: Path to save file
+            chunk_size: Download chunk size
+            resume: Whether to resume partial downloads
+            verify_checksum: Expected MD5 checksum
         
-        print(f"Downloading {desc or url}...")
+        Returns:
+            True if download successful
+        """
+        
+        # Check if file already exists and is complete
+        if output_path.exists():
+            if verify_checksum:
+                if self.verify_checksum(output_path, verify_checksum):
+                    print(f" File already exists and verified: {output_path}")
+                    return True
+                else:
+                    print(f" File exists but checksum mismatch, re-downloading: {output_path}")
+                    output_path.unlink()
+            else:
+                print(f" File already exists: {output_path}")
+                return True
+        
+        # Setup headers for resume
+        headers = {}
+        mode = 'wb'
+        initial_pos = 0
+        
+        if resume and output_path.exists():
+            initial_pos = output_path.stat().st_size
+            headers = {'Range': f'bytes={initial_pos}-'}
+            mode = 'ab'
+        
+        # Download with progress bar
         try:
-            response = requests.get(url, stream=True)
+            response = requests.get(url, headers=headers, stream=True)
+            response.raise_for_status()
+            
             total_size = int(response.headers.get('content-length', 0))
             
-            with open(dest_path, 'wb') as f:
-                with tqdm(total=total_size, unit='iB', unit_scale=True, desc=desc) as pbar:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                        pbar.update(len(chunk))
+            with open(output_path, mode) as f:
+                with tqdm(
+                    total=total_size,
+                    initial=initial_pos,
+                    unit='B',
+                    unit_scale=True,
+                    desc=output_path.name
+                ) as pbar:
+                    for chunk in response.iter_content(chunk_size=chunk_size):
+                        if chunk:
+                            f.write(chunk)
+                            pbar.update(len(chunk))
+            
+            # Verify checksum if provided
+            if verify_checksum:
+                if not self.verify_checksum(output_path, verify_checksum):
+                    print(f"✗ Checksum verification failed for {output_path}")
+                    return False
+            
+            print(f" Successfully downloaded: {output_path}")
             return True
+            
         except Exception as e:
-            print(f"✗ Error downloading {url}: {e}")
-            if os.path.exists(dest_path):
-                os.remove(dest_path)
+            print(f" Error downloading {url}: {e}")
             return False
     
-    def extract_archive(self, archive_path: str, extract_to: str):
-        """Extract zip or tar archive"""
-        print(f"Extracting {archive_path}...")
+    def verify_checksum(self, file_path: Path, expected_checksum: str) -> bool:
+        """Verify MD5 checksum of file"""
+        md5_hash = hashlib.md5()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                md5_hash.update(chunk)
         
-        if archive_path.endswith('.zip'):
+        actual_checksum = md5_hash.hexdigest()
+        return actual_checksum == expected_checksum
+    
+    def extract_archive(self, archive_path: Path, extract_to: Path):
+        """Extract zip or tar archive"""
+        print(f"Extracting {archive_path.name}...")
+        
+        if archive_path.suffix == '.zip':
             with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-                for member in tqdm(zip_ref.namelist(), desc="Extracting"):
-                    zip_ref.extract(member, extract_to)
-        elif archive_path.endswith(('.tar.gz', '.tgz')):
-            with tarfile.open(archive_path, 'r:gz') as tar_ref:
+                zip_ref.extractall(extract_to)
+        elif archive_path.suffix in ['.tar', '.gz', '.tgz']:
+            with tarfile.open(archive_path, 'r:*') as tar_ref:
                 tar_ref.extractall(extract_to)
         else:
-            print(f"Unknown archive format: {archive_path}")
-    
-    def verify_file(self, file_path: str, expected_size_mb: Optional[int] = None) -> bool:
-        """Verify downloaded file"""
-        if not os.path.exists(file_path):
-            return False
-        
-        actual_size_mb = os.path.getsize(file_path) / (1024 * 1024)
-        
-        if expected_size_mb:
-            if abs(actual_size_mb - expected_size_mb) > expected_size_mb * 0.1:  # 10% tolerance
-                print(f"⚠ Size mismatch for {file_path}: {actual_size_mb:.1f}MB vs {expected_size_mb}MB expected")
-                return False
-        
-        print(f"Verified {file_path} ({actual_size_mb:.1f}MB)")
-        return True
-
-# ==========================================
-# COCO Dataset Preparation
-# ==========================================
-
-class COCODatasetPrep:
-    """Prepare COCO Captions dataset"""
-    
-    def __init__(self, data_dir: str = './data/coco'):
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.downloader = DatasetDownloader(data_dir)
-    
-    def download(self):
-        """Download COCO dataset"""
-        print("\n" + "="*50)
-        print("Downloading COCO Captions Dataset")
-        print("="*50)
-        
-        # Create directories
-        for split in ['train2014', 'val2014', 'test2015', 'annotations']:
-            (self.data_dir / split).mkdir(exist_ok=True)
-        
-        # Download images
-        datasets = [
-            ('train_images', 'train2014.zip'),
-            ('val_images', 'val2014.zip'),
-            ('test_images', 'test2015.zip'),
-            ('train_annotations', 'annotations_trainval2014.zip')
-        ]
-        
-        for key, filename in datasets:
-            url = DATASET_URLS['coco'][key]
-            dest_path = self.data_dir / filename
-            
-            if self.downloader.download_file(url, str(dest_path), f"COCO {key}"):
-                self.downloader.extract_archive(str(dest_path), str(self.data_dir))
-        
-        print("COCO download complete")
-    
-    def prepare_splits(self):
-        """Prepare train/val/test splits following Karpathy split"""
-        print("\nPreparing COCO splits...")
-        
-        # Load annotations
-        ann_file = self.data_dir / 'annotations' / 'captions_train2014.json'
-        if not ann_file.exists():
-            print("✗ Annotations not found. Please run download first.")
+            print(f"Unknown archive format: {archive_path.suffix}")
             return
         
-        with open(ann_file, 'r') as f:
-            train_anns = json.load(f)
-        
-        ann_file = self.data_dir / 'annotations' / 'captions_val2014.json'
-        with open(ann_file, 'r') as f:
-            val_anns = json.load(f)
-        
-        # Create unified dataset file
-        dataset = {
-            'images': train_anns['images'] + val_anns['images'],
-            'annotations': train_anns['annotations'] + val_anns['annotations']
-        }
-        
-        # Create image id to file mapping
-        id_to_file = {img['id']: img['file_name'] for img in dataset['images']}
-        
-        # Group annotations by image
-        img_to_caps = {}
-        for ann in dataset['annotations']:
-            img_id = ann['image_id']
-            if img_id not in img_to_caps:
-                img_to_caps[img_id] = []
-            img_to_caps[img_id].append(ann['caption'])
-        
-        # Create split files
-        splits = {
-            'train': list(img_to_caps.keys())[:113287],
-            'val': list(img_to_caps.keys())[113287:113287+5000],
-            'test': list(img_to_caps.keys())[113287+5000:113287+10000]
-        }
-        
-        for split_name, img_ids in splits.items():
-            split_data = []
-            for img_id in img_ids:
-                if img_id in img_to_caps:
-                    for caption in img_to_caps[img_id]:
-                        split_data.append({
-                            'image_id': img_id,
-                            'image_file': id_to_file.get(img_id, ''),
-                            'caption': caption
-                        })
-            
-            # Save split file
-            output_file = self.data_dir / f'{split_name}_captions.json'
-            with open(output_file, 'w') as f:
-                json.dump(split_data, f, indent=2)
-            
-            print(f"Created {split_name} split with {len(split_data)} caption pairs")
+        print(f"✓ Extracted to {extract_to}")
     
-    def create_cached_embeddings(self):
-        """Pre-compute and cache CLIP embeddings for efficiency"""
-        print("\nPre-computing CLIP embeddings for COCO...")
-        
-        try:
-            import clip
-            import torch
-            from PIL import Image
-            
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            model, preprocess = clip.load("ViT-B/32", device=device)
-            
-            cache_dir = self.data_dir / 'cached_embeddings'
-            cache_dir.mkdir(exist_ok=True)
-            
-            # Process each split
-            for split in ['train', 'val', 'test']:
-                split_file = self.data_dir / f'{split}_captions.json'
-                if not split_file.exists():
-                    continue
-                
-                with open(split_file, 'r') as f:
-                    data = json.load(f)
-                
-                embeddings = {
-                    'image_embeddings': {},
-                    'text_embeddings': []
-                }
-                
-                print(f"Processing {split} split...")
-                
-                # Cache unique image embeddings
-                unique_images = list(set([item['image_file'] for item in data]))
-                
-                for img_file in tqdm(unique_images[:100], desc="Images"):  # Limit for demo
-                    img_path = self.data_dir / 'train2014' / img_file
-                    if not img_path.exists():
-                        img_path = self.data_dir / 'val2014' / img_file
-                    
-                    if img_path.exists():
-                        image = Image.open(img_path).convert('RGB')
-                        image_input = preprocess(image).unsqueeze(0).to(device)
-                        
-                        with torch.no_grad():
-                            image_features = model.encode_image(image_input)
-                            embeddings['image_embeddings'][img_file] = image_features.cpu().numpy()
-                
-                # Cache text embeddings
-                for item in tqdm(data[:1000], desc="Captions"):  # Limit for demo
-                    text = clip.tokenize([item['caption']], truncate=True).to(device)
-                    
-                    with torch.no_grad():
-                        text_features = model.encode_text(text)
-                        embeddings['text_embeddings'].append({
-                            'caption': item['caption'],
-                            'embedding': text_features.cpu().numpy()
-                        })
-                
-                # Save embeddings
-                cache_file = cache_dir / f'{split}_embeddings.npz'
-                np.savez_compressed(cache_file, **embeddings)
-                print(f"Cached {len(embeddings['image_embeddings'])} image embeddings")
-                
-        except ImportError:
-            print("CLIP not installed. Skipping embedding cache.")
-
-# ==========================================
-# VQA v2 Dataset Preparation
-# ==========================================
-
-class VQADatasetPrep:
-    """Prepare VQA v2 dataset"""
-    
-    def __init__(self, data_dir: str = './data/vqa'):
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.downloader = DatasetDownloader(data_dir)
-    
-    def download(self):
+    def download_vqa(self):
         """Download VQA v2 dataset"""
         print("\n" + "="*50)
         print("Downloading VQA v2 Dataset")
         print("="*50)
         
+        vqa_dir = self.data_dir / "vqa" / "v2"
+        vqa_dir.mkdir(parents=True, exist_ok=True)
+        
         # Download questions and annotations
-        files_to_download = [
-            ('train_questions', 'v2_Questions_Train_mscoco.zip'),
-            ('val_questions', 'v2_Questions_Val_mscoco.zip'),
-            ('test_questions', 'v2_Questions_Test_mscoco.zip'),
-            ('train_annotations', 'v2_Annotations_Train_mscoco.zip'),
-            ('val_annotations', 'v2_Annotations_Val_mscoco.zip')
-        ]
-        
-        for key, filename in files_to_download:
-            url = DATASET_URLS['vqa'][key]
-            dest_path = self.data_dir / filename
+        for split in ["train", "val", "test"]:
+            # Questions
+            if f"{split}_questions" in DATASETS["vqa"]:
+                url = DATASETS["vqa"][f"{split}_questions"]
+                output_file = self.cache_dir / f"vqa_v2_questions_{split}.zip"
+                
+                if self.download_file(url, output_file):
+                    self.extract_archive(output_file, vqa_dir)
             
-            if self.downloader.download_file(url, str(dest_path), f"VQA {key}"):
-                self.downloader.extract_archive(str(dest_path), str(self.data_dir))
+            # Annotations (not available for test)
+            if f"{split}_annotations" in DATASETS["vqa"]:
+                url = DATASETS["vqa"][f"{split}_annotations"]
+                output_file = self.cache_dir / f"vqa_v2_annotations_{split}.zip"
+                
+                if self.download_file(url, output_file):
+                    self.extract_archive(output_file, vqa_dir)
         
-        print("VQA v2 download complete")
-        print("Note: VQA uses COCO images. Make sure COCO is downloaded.")
+        print("✓ VQA v2 dataset downloaded successfully")
     
-    def prepare_dataset(self):
-        """Prepare VQA dataset for training"""
-        print("\nPreparing VQA dataset...")
+    def download_coco(self):
+        """Download MS-COCO dataset"""
+        print("\n" + "="*50)
+        print("Downloading MS-COCO Dataset")
+        print("="*50)
         
-        # Load questions
-        for split in ['train', 'val']:
-            q_file = self.data_dir / f'v2_OpenEnded_mscoco_{split}2014_questions.json'
-            a_file = self.data_dir / f'v2_mscoco_{split}2014_annotations.json'
+        coco_dir = self.data_dir / "coco"
+        coco_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Download images
+        for split in ["train", "val", "test"]:
+            if f"{split}_images" in DATASETS["coco"]:
+                url = DATASETS["coco"][f"{split}_images"]
+                output_file = self.cache_dir / f"coco_{split}2014.zip"
+                
+                checksum = CHECKSUMS.get(f"coco_{split}_images")
+                if self.download_file(url, output_file, verify_checksum=checksum):
+                    self.extract_archive(output_file, coco_dir)
+        
+        # Download annotations
+        if "train_annotations" in DATASETS["coco"]:
+            url = DATASETS["coco"]["train_annotations"]
+            output_file = self.cache_dir / "coco_annotations_trainval2014.zip"
             
-            if not q_file.exists() or not a_file.exists():
-                print(f"Missing files for {split} split")
-                continue
-            
-            with open(q_file, 'r') as f:
-                questions = json.load(f)['questions']
-            
-            with open(a_file, 'r') as f:
-                annotations = json.load(f)['annotations']
-            
-            # Combine questions and answers
-            qa_pairs = []
-            for q, a in zip(questions, annotations):
-                qa_pairs.append({
-                    'question_id': q['question_id'],
-                    'image_id': q['image_id'],
-                    'question': q['question'],
-                    'answers': [ans['answer'] for ans in a['answers']],
-                    'answer_type': a.get('answer_type', 'unknown'),
-                    'question_type': a.get('question_type', 'unknown')
-                })
-            
-            # Save processed dataset
-            output_file = self.data_dir / f'{split}_qa.json'
-            with open(output_file, 'w') as f:
-                json.dump(qa_pairs, f, indent=2)
-            
-            print(f"Processed {split} split: {len(qa_pairs)} QA pairs")
+            if self.download_file(url, output_file):
+                self.extract_archive(output_file, coco_dir)
+        
+        print("✓ MS-COCO dataset downloaded successfully")
     
-    def create_answer_vocabulary(self):
-        """Create answer vocabulary for classification"""
-        print("\nCreating answer vocabulary...")
-        
-        all_answers = []
-        for split in ['train', 'val']:
-            qa_file = self.data_dir / f'{split}_qa.json'
-            if not qa_file.exists():
-                continue
-            
-            with open(qa_file, 'r') as f:
-                data = json.load(f)
-            
-            for item in data:
-                all_answers.extend(item['answers'])
-        
-        # Count answer frequencies
-        from collections import Counter
-        answer_counts = Counter(all_answers)
-        
-        # Keep top 3000 answers (following paper)
-        vocab = ['<unk>'] + [ans for ans, _ in answer_counts.most_common(3000)]
-        
-        # Create answer to index mapping
-        ans2idx = {ans: idx for idx, ans in enumerate(vocab)}
-        
-        # Save vocabulary
-        vocab_file = self.data_dir / 'answer_vocab.json'
-        with open(vocab_file, 'w') as f:
-            json.dump({'vocab': vocab, 'ans2idx': ans2idx}, f, indent=2)
-        
-        print(f" Created vocabulary with {len(vocab)} answers")
-
-# ==========================================
-# SNLI-VE Dataset Preparation
-# ==========================================
-
-class SNLIVEDatasetPrep:
-    """Prepare SNLI-VE dataset"""
-    
-    def __init__(self, data_dir: str = './data/snli-ve'):
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.downloader = DatasetDownloader(data_dir)
-    
-    def download(self):
+    def download_snli_ve(self):
         """Download SNLI-VE dataset"""
         print("\n" + "="*50)
         print("Downloading SNLI-VE Dataset")
         print("="*50)
         
-        # Download SNLI-VE annotations
-        for split_name, url in DATASET_URLS['snli_ve']['splits'].items():
-            dest_path = self.data_dir / f'snli_ve_{split_name}.jsonl'
-            self.downloader.download_file(url, str(dest_path), f"SNLI-VE {split_name}")
+        snli_dir = self.data_dir / "snli-ve"
+        snli_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Download annotations from GitHub
+        url = DATASETS["snli-ve"]["annotations"]
+        output_file = self.cache_dir / "snli_ve.zip"
+        
+        if self.download_file(url, output_file):
+            self.extract_archive(output_file, snli_dir)
         
         print("\n" + "!"*50)
-        print("IMPORTANT: Flickr30k images required!")
-        print("Please download Flickr30k images manually from:")
-        print("https://forms.illinois.edu/sec/229675")
-        print("Extract to: data/snli-ve/flickr30k_images/")
+        print("IMPORTANT: Flickr30k images must be downloaded separately")
+        print("Please visit: https://shannon.cs.illinois.edu/DenotationGraph/")
+        print("After downloading, extract images to:", snli_dir / "flickr30k_images")
         print("!"*50)
         
-        # Create placeholder directory
-        (self.data_dir / 'flickr30k_images').mkdir(exist_ok=True)
-        
-        print(" SNLI-VE annotations downloaded")
+        print("✓ SNLI-VE annotations downloaded successfully")
     
-    def prepare_dataset(self):
-        """Prepare SNLI-VE dataset"""
-        print("\nPreparing SNLI-VE dataset...")
+    def download_from_huggingface(self, repo_id: str, output_dir: Path):
+        """Download dataset from HuggingFace Hub"""
+        print(f"Downloading from HuggingFace: {repo_id}")
         
-        label_map = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
-        
-        for split in ['train', 'dev', 'test']:
-            input_file = self.data_dir / f'snli_ve_{split}.jsonl'
-            if not input_file.exists():
-                print(f"⚠ Missing {split} split file")
-                continue
-            
-            data = []
-            with open(input_file, 'r') as f:
-                for line in f:
-                    item = json.loads(line)
-                    if item['gold_label'] in label_map:
-                        data.append({
-                            'image': item['Flickr30K_ID'] + '.jpg',
-                            'hypothesis': item['sentence2'],
-                            'label': label_map[item['gold_label']],
-                            'label_text': item['gold_label']
-                        })
-            
-            # Save processed data
-            output_file = self.data_dir / f'{split}_processed.json'
-            with open(output_file, 'w') as f:
-                json.dump(data, f, indent=2)
-            
-            print(f" Processed {split} split: {len(data)} examples")
-            
-            # Print label distribution
-            if data:
-                labels = [d['label'] for d in data]
-                unique, counts = np.unique(labels, return_counts=True)
-                print(f"  Label distribution: {dict(zip(unique, counts))}")
-
-# ==========================================
-# Dataset Statistics and Verification
-# ==========================================
-
-class DatasetVerifier:
-    """Verify dataset integrity and print statistics"""
+        try:
+            snapshot_download(
+                repo_id=repo_id,
+                local_dir=output_dir,
+                repo_type="dataset",
+                resume_download=True
+            )
+            print(f"✓ Downloaded {repo_id} to {output_dir}")
+        except Exception as e:
+            print(f"✗ Error downloading from HuggingFace: {e}")
     
-    def __init__(self, data_dir: str = './data'):
-        self.data_dir = Path(data_dir)
-    
-    def verify_coco(self):
-        """Verify COCO dataset"""
+    def prepare_embeddings_cache(self):
+        """Pre-compute and cache CLIP embeddings for faster training"""
         print("\n" + "="*50)
-        print("COCO Dataset Verification")
+        print("Preparing Embeddings Cache")
         print("="*50)
         
-        coco_dir = self.data_dir / 'coco'
+        cache_script = Path(__file__).parent / "cache_embeddings.py"
         
-        # Check images
-        image_dirs = ['train2014', 'val2014']
-        total_images = 0
-        for img_dir in image_dirs:
-            dir_path = coco_dir / img_dir
-            if dir_path.exists():
-                num_images = len(list(dir_path.glob('*.jpg')))
-                print(f" {img_dir}: {num_images} images")
-                total_images += num_images
-        
-        # Check annotations
-        for split in ['train', 'val', 'test']:
-            ann_file = coco_dir / f'{split}_captions.json'
-            if ann_file.exists():
-                with open(ann_file, 'r') as f:
-                    data = json.load(f)
-                print(f" {split} captions: {len(data)} pairs")
-        
-        print(f"\nTotal images: {total_images}")
-    
-    def verify_vqa(self):
-        """Verify VQA dataset"""
-        print("\n" + "="*50)
-        print("VQA v2 Dataset Verification")
-        print("="*50)
-        
-        vqa_dir = self.data_dir / 'vqa'
-        
-        for split in ['train', 'val']:
-            qa_file = vqa_dir / f'{split}_qa.json'
-            if qa_file.exists():
-                with open(qa_file, 'r') as f:
-                    data = json.load(f)
-                print(f" {split}: {len(data)} QA pairs")
-                
-                # Sample statistics
-                if data:
-                    q_types = [d.get('question_type', 'unknown') for d in data[:1000]]
-                    unique_types = list(set(q_types))[:5]
-                    print(f"  Sample question types: {unique_types}")
-        
-        # Check vocabulary
-        vocab_file = vqa_dir / 'answer_vocab.json'
-        if vocab_file.exists():
-            with open(vocab_file, 'r') as f:
-                vocab = json.load(f)
-            print(f" Answer vocabulary: {len(vocab['vocab'])} answers")
-    
-    def verify_snli_ve(self):
-        """Verify SNLI-VE dataset"""
-        print("\n" + "="*50)
-        print("SNLI-VE Dataset Verification")
-        print("="*50)
-        
-        snli_dir = self.data_dir / 'snli-ve'
-        
-        for split in ['train', 'dev', 'test']:
-            data_file = snli_dir / f'{split}_processed.json'
-            if data_file.exists():
-                with open(data_file, 'r') as f:
-                    data = json.load(f)
-                print(f" {split}: {len(data)} examples")
-        
-        # Check Flickr30k images
-        flickr_dir = snli_dir / 'flickr30k_images'
-        if flickr_dir.exists():
-            num_images = len(list(flickr_dir.glob('*.jpg')))
-            if num_images > 0:
-                print(f"Flickr30k images: {num_images} found")
-            else:
-                print("No Flickr30k images found. Please download manually.")
+        if cache_script.exists():
+            os.system(f"python {cache_script} --data-dir {self.data_dir} --cache-dir {self.cache_dir}")
         else:
-            print("Flickr30k images directory not found")
+            print("Cache script not found. Skipping embedding cache preparation.")
+    
+    def download_all(self, datasets: List[str], cache_embeddings: bool = False):
+        """Download all specified datasets"""
+        
+        for dataset in datasets:
+            if dataset == "vqa":
+                self.download_vqa()
+                self.download_coco()  # VQA requires COCO images
+            elif dataset == "coco":
+                self.download_coco()
+            elif dataset == "snli-ve":
+                self.download_snli_ve()
+            else:
+                print(f"Unknown dataset: {dataset}")
+        
+        if cache_embeddings:
+            self.prepare_embeddings_cache()
+        
+        # Print summary
+        print("\n" + "="*50)
+        print("Download Summary")
+        print("="*50)
+        
+        total_size = 0
+        for dataset_dir in self.data_dir.iterdir():
+            if dataset_dir.is_dir():
+                size = sum(f.stat().st_size for f in dataset_dir.rglob('*') if f.is_file())
+                size_gb = size / (1024**3)
+                total_size += size_gb
+                print(f"{dataset_dir.name}: {size_gb:.2f} GB")
+        
+        print(f"Total: {total_size:.2f} GB")
 
 
 def main():
-    """Main dataset preparation script"""
+    parser = argparse.ArgumentParser(description="Download datasets for FrEVL")
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        nargs="+",
+        default=["all"],
+        choices=["all", "vqa", "coco", "snli-ve", "conceptual-captions", "visual-genome"],
+        help="Datasets to download"
+    )
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default="./data",
+        help="Directory to save datasets"
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        default="./cache",
+        help="Directory for download cache"
+    )
+    parser.add_argument(
+        "--cache-embeddings",
+        action="store_true",
+        help="Pre-compute CLIP embeddings"
+    )
+    parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Disable resume for partial downloads"
+    )
     
-    print("="*60)
-    print("FrEVL Dataset Preparation")
-    print("="*60)
-    
-    import argparse
-    parser = argparse.ArgumentParser(description='Download and prepare datasets for FrEVL')
-    parser.add_argument('--data-dir', type=str, default='./data',
-                       help='Root directory for datasets')
-    parser.add_argument('--dataset', type=str, choices=['coco', 'vqa', 'snli-ve', 'all'],
-                       default='all', help='Which dataset to download')
-    parser.add_argument('--skip-download', action='store_true',
-                       help='Skip download, only prepare')
-    parser.add_argument('--cache-embeddings', action='store_true',
-                       help='Pre-compute CLIP embeddings')
     args = parser.parse_args()
     
-    # Create data directory
-    data_dir = Path(args.data_dir)
-    data_dir.mkdir(parents=True, exist_ok=True)
+    # Prepare dataset list
+    if "all" in args.dataset:
+        datasets = ["vqa", "snli-ve"]
+    else:
+        datasets = args.dataset
     
-    # Download and prepare datasets
-    if args.dataset in ['coco', 'all']:
-        coco_prep = COCODatasetPrep(str(data_dir / 'coco'))
-        if not args.skip_download:
-            coco_prep.download()
-        coco_prep.prepare_splits()
-        if args.cache_embeddings:
-            coco_prep.create_cached_embeddings()
+    # Initialize downloader
+    downloader = DatasetDownloader(args.data_dir, args.cache_dir)
     
-    if args.dataset in ['vqa', 'all']:
-        vqa_prep = VQADatasetPrep(str(data_dir / 'vqa'))
-        if not args.skip_download:
-            vqa_prep.download()
-        vqa_prep.prepare_dataset()
-        vqa_prep.create_answer_vocabulary()
+    # Download datasets
+    downloader.download_all(datasets, args.cache_embeddings)
     
-    if args.dataset in ['snli-ve', 'all']:
-        snli_prep = SNLIVEDatasetPrep(str(data_dir / 'snli-ve'))
-        if not args.skip_download:
-            snli_prep.download()
-        snli_prep.prepare_dataset()
+    print("\n✓ All downloads complete!")
+    print(f"Data saved to: {args.data_dir}")
     
-    # Verify datasets
-    print("\n" + "="*60)
-    print("Dataset Verification")
-    print("="*60)
-    
-    verifier = DatasetVerifier(args.data_dir)
-    if args.dataset in ['coco', 'all']:
-        verifier.verify_coco()
-    if args.dataset in ['vqa', 'all']:
-        verifier.verify_vqa()
-    if args.dataset in ['snli-ve', 'all']:
-        verifier.verify_snli_ve()
-    
-    print("\n" + "="*60)
-    print("Dataset preparation complete!")
-    print("="*60)
-    
+    # Provide next steps
+    print("\n" + "="*50)
+    print("Next Steps")
+    print("="*50)
+    print("1. If you downloaded SNLI-VE, download Flickr30k images manually")
+    print("2. Run training: python train.py --dataset vqa")
+    print("3. Run evaluation: python evaluate.py --dataset all")
+    print("4. Launch demo: python demo.py")
+
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,72 @@
+# Development dependencies for FrEVL
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.11.0
+pytest-benchmark>=4.0.0
+pytest-xdist>=3.3.0
+pytest-timeout>=2.1.0
+hypothesis>=6.87.0
+faker>=19.10.0
+
+# Code Quality
+black>=23.9.0
+isort>=5.12.0
+flake8>=6.1.0
+flake8-docstrings>=1.7.0
+flake8-bugbear>=23.9.0
+flake8-comprehensions>=3.14.0
+mypy>=1.5.0
+pylint>=3.0.0
+bandit>=1.7.5
+safety>=2.3.0
+
+# Documentation
+sphinx>=7.2.0
+sphinx-rtd-theme>=1.3.0
+sphinx-autodoc-typehints>=1.24.0
+myst-parser>=2.0.0
+nbsphinx>=0.9.0
+
+# Development Tools
+pre-commit>=3.4.0
+ipython>=8.15.0
+ipdb>=0.13.0
+jupyter>=1.0.0
+jupyterlab>=4.0.0
+notebook>=7.0.0
+
+# Profiling & Debugging
+memory-profiler>=0.61.0
+line-profiler>=4.1.0
+py-spy>=0.3.0
+scalene>=1.5.0
+snakeviz>=2.2.0
+
+# Build & Release
+build>=1.0.0
+twine>=4.0.0
+wheel>=0.41.0
+setuptools>=68.0.0
+setuptools-scm>=8.0.0
+bump2version>=1.0.0
+
+# CI/CD Tools
+tox>=4.11.0
+nox>=2023.4.0
+invoke>=2.2.0
+commitizen>=3.10.0
+
+# Code Generation
+cookiecutter>=2.4.0
+jinja2>=3.1.0
+
+# Additional Utilities
+python-dotenv>=1.0.0
+rich>=13.6.0
+typer>=0.9.0
+click>=8.1.0
+httpie>=3.2.0
+watchdog>=3.0.0

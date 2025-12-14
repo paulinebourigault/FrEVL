@@ -1,6 +1,6 @@
 """
 FrEVL Data Loaders
-Dataset implementations for VQA, SNLI-VE, MS-COCO and more
+Dataset implementations for VQA, SNLI-VE, MS-COCO 
 """
 
 import os

@@ -1,6 +1,5 @@
 """
 FrEVL Model Evaluation Script
-Comprehensive evaluation on multiple datasets with detailed metrics
 """
 
 import argparse

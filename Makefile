@@ -1,5 +1,4 @@
 # FrEVL Makefile
-# Automated development and deployment tasks
 
 .PHONY: help setup format lint test clean docker deploy docs
 

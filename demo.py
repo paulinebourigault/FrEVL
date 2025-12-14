@@ -1,6 +1,5 @@
 """
 FrEVL: Interactive Demo with Gradio
-Real-time vision-language understanding with visualization
 """
 
 import os
@@ -624,13 +623,6 @@ class FrEVLDemo:
                     - `GET /health` - Health check
                     """)
             
-            # Footer
-            gr.Markdown("""
-            <div style="text-align: center; margin-top: 40px; padding: 20px; background: #f8f9fa;">
-                <p>Built with by Emmanuelle Bourigault | ICCVW 2025</p>
-                <p>⚡ Achieving 85-95% SOTA performance with 10× fewer parameters</p>
-            </div>
-            """)
         
         self.demo = demo
         return demo
