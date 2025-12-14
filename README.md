@@ -71,7 +71,7 @@ python demo.py --model frevl-base --port 7860
 
 #### Option 2: Python API
 ```python
-from frevl import FrEVL
+from model import FrEVL
 
 # Load model
 model = FrEVL.from_pretrained("frevl-base")
@@ -99,10 +99,6 @@ curl -X POST "http://localhost:8000/predict" \
 ```
 
 ## Architecture
-
-<div align="center">
-  <img src="https://github.com/EmmanuelleB985/FrEVL/assets/placeholder/architecture.png" alt="FrEVL Architecture" width="80%">
-</div>
 
 FrEVL's key innovations:
 1. **Frozen CLIP Encoders**: Leverage pretrained representations without fine-tuning
@@ -213,8 +209,6 @@ from frevl.tracing import tracer
 with tracer.start_span("inference"):
     result = model.predict(image, text)
 ```
-
-
 
 ## Advanced Features
 
