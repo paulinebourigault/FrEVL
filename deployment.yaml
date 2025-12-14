@@ -1,0 +1,479 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: frevl-production
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frevl-config
+  namespace: frevl-production
+data:
+  MODEL_NAME: "frevl-base"
+  DEVICE: "cuda"
+  PORT: "8000"
+  ENABLE_CACHE: "true"
+  ENABLE_METRICS: "true"
+  MAX_BATCH_SIZE: "32"
+  BATCH_TIMEOUT_MS: "50"
+  MAX_CONCURRENT_REQUESTS: "100"
+  CACHE_TTL_SECONDS: "3600"
+
+---
+# Secret for sensitive data
+apiVersion: v1
+kind: Secret
+metadata:
+  name: frevl-secrets
+  namespace: frevl-production
+type: Opaque
+stringData:
+  API_KEY: "your-api-key-here"
+  MONGODB_URL: "mongodb://admin:password@mongodb:27017"
+  REDIS_URL: "redis://redis:6379"
+
+---
+# PersistentVolume for model storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: frevl-models-pvc
+  namespace: frevl-production
+spec:
+  accessModes:
+    - ReadOnlyMany
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# Main Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frevl-api
+  namespace: frevl-production
+  labels:
+    app: frevl-api
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: frevl-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: frevl-api
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: frevl-api
+        image: ghcr.io/emmanelleb985/frevl:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: frevl-config
+        - secretRef:
+            name: frevl-secrets
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2"
+            nvidia.com/gpu: "1"
+          limits:
+            memory: "8Gi"
+            cpu: "4"
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - name: models
+          mountPath: /app/checkpoints
+          readOnly: true
+        - name: cache
+          mountPath: /app/cache
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 15"]
+      volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: frevl-models-pvc
+      - name: cache
+        emptyDir:
+          sizeLimit: 1Gi
+      nodeSelector:
+        node.kubernetes.io/instance-type: g4dn.xlarge
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - frevl-api
+              topologyKey: kubernetes.io/hostname
+
+---
+# Canary Deployment for gradual rollouts
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frevl-api-canary
+  namespace: frevl-production
+  labels:
+    app: frevl-api
+    version: canary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frevl-api
+      version: canary
+  template:
+    metadata:
+      labels:
+        app: frevl-api
+        version: canary
+    spec:
+      containers:
+      - name: frevl-api
+        image: ghcr.io/emmanelleb985/frevl:canary
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: frevl-config
+        - secretRef:
+            name: frevl-secrets
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2"
+            nvidia.com/gpu: "1"
+          limits:
+            memory: "8Gi"
+            cpu: "4"
+            nvidia.com/gpu: "1"
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: frevl-api-service
+  namespace: frevl-production
+  labels:
+    app: frevl-api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: frevl-api
+
+---
+# HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frevl-api-hpa
+  namespace: frevl-production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frevl-api
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: http_requests_per_second
+      target:
+        type: AverageValue
+        averageValue: "1000"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+
+---
+# Ingress with SSL
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frevl-api-ingress
+  namespace: frevl-production
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-weight: "10"
+spec:
+  tls:
+  - hosts:
+    - api.frevl.ai
+    secretName: frevl-api-tls
+  rules:
+  - host: api.frevl.ai
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frevl-api-service
+            port:
+              number: 80
+
+---
+# Redis for caching
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: frevl-production
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: redis-data
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: frevl-production
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+  selector:
+    app: redis
+
+---
+# MongoDB for logging
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+  namespace: frevl-production
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo:6
+        ports:
+        - containerPort: 27017
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          value: admin
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: frevl-secrets
+              key: MONGODB_PASSWORD
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        volumeMounts:
+        - name: mongo-data
+          mountPath: /data/db
+      volumes:
+      - name: mongo-data
+        persistentVolumeClaim:
+          claimName: mongodb-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: frevl-production
+spec:
+  ports:
+  - port: 27017
+    targetPort: 27017
+  selector:
+    app: mongodb
+
+---
+# ServiceMonitor for Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: frevl-api-monitor
+  namespace: frevl-production
+spec:
+  selector:
+    matchLabels:
+      app: frevl-api
+  endpoints:
+  - port: http
+    interval: 30s
+    path: /metrics
+
+---
+# NetworkPolicy for security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frevl-api-netpol
+  namespace: frevl-production
+spec:
+  podSelector:
+    matchLabels:
+      app: frevl-api
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    - podSelector:
+        matchLabels:
+          app: prometheus
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    - podSelector:
+        matchLabels:
+          app: mongodb
+    ports:
+    - protocol: TCP
+      port: 6379
+    - protocol: TCP
+      port: 27017
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443  # For external HTTPS calls
+
+---
+# PodDisruptionBudget for high availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frevl-api-pdb
+  namespace: frevl-production
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: frevl-api

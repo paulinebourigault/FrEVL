@@ -60,7 +60,7 @@ class DatasetDownloader:
     def download_file(self, url: str, dest_path: str, desc: str = None) -> bool:
         """Download file with progress bar"""
         if os.path.exists(dest_path):
-            print(f"✓ {dest_path} already exists, skipping download")
+            print(f" {dest_path} already exists, skipping download")
             return True
         
         print(f"Downloading {desc or url}...")
@@ -379,7 +379,7 @@ class VQADatasetPrep:
         with open(vocab_file, 'w') as f:
             json.dump({'vocab': vocab, 'ans2idx': ans2idx}, f, indent=2)
         
-        print(f"✓ Created vocabulary with {len(vocab)} answers")
+        print(f" Created vocabulary with {len(vocab)} answers")
 
 # ==========================================
 # SNLI-VE Dataset Preparation
@@ -414,7 +414,7 @@ class SNLIVEDatasetPrep:
         # Create placeholder directory
         (self.data_dir / 'flickr30k_images').mkdir(exist_ok=True)
         
-        print("✓ SNLI-VE annotations downloaded")
+        print(" SNLI-VE annotations downloaded")
     
     def prepare_dataset(self):
         """Prepare SNLI-VE dataset"""
@@ -445,7 +445,7 @@ class SNLIVEDatasetPrep:
             with open(output_file, 'w') as f:
                 json.dump(data, f, indent=2)
             
-            print(f"✓ Processed {split} split: {len(data)} examples")
+            print(f" Processed {split} split: {len(data)} examples")
             
             # Print label distribution
             if data:
@@ -478,7 +478,7 @@ class DatasetVerifier:
             dir_path = coco_dir / img_dir
             if dir_path.exists():
                 num_images = len(list(dir_path.glob('*.jpg')))
-                print(f"✓ {img_dir}: {num_images} images")
+                print(f" {img_dir}: {num_images} images")
                 total_images += num_images
         
         # Check annotations
@@ -487,7 +487,7 @@ class DatasetVerifier:
             if ann_file.exists():
                 with open(ann_file, 'r') as f:
                     data = json.load(f)
-                print(f"✓ {split} captions: {len(data)} pairs")
+                print(f" {split} captions: {len(data)} pairs")
         
         print(f"\nTotal images: {total_images}")
     
@@ -504,7 +504,7 @@ class DatasetVerifier:
             if qa_file.exists():
                 with open(qa_file, 'r') as f:
                     data = json.load(f)
-                print(f"✓ {split}: {len(data)} QA pairs")
+                print(f" {split}: {len(data)} QA pairs")
                 
                 # Sample statistics
                 if data:
@@ -517,7 +517,7 @@ class DatasetVerifier:
         if vocab_file.exists():
             with open(vocab_file, 'r') as f:
                 vocab = json.load(f)
-            print(f"✓ Answer vocabulary: {len(vocab['vocab'])} answers")
+            print(f" Answer vocabulary: {len(vocab['vocab'])} answers")
     
     def verify_snli_ve(self):
         """Verify SNLI-VE dataset"""
@@ -532,7 +532,7 @@ class DatasetVerifier:
             if data_file.exists():
                 with open(data_file, 'r') as f:
                     data = json.load(f)
-                print(f"✓ {split}: {len(data)} examples")
+                print(f" {split}: {len(data)} examples")
         
         # Check Flickr30k images
         flickr_dir = snli_dir / 'flickr30k_images'
