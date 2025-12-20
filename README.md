@@ -21,11 +21,11 @@
 
 FrEVL is a vision-language understanding by **freezing pretrained CLIP embeddings** and training only a lightweight fusion network. This approach delivers:
 
-- 3× faster inference** than ALBEF/BLIP
+- 3× faster inference than ALBEF/BLIP
 - 70% lower deployment costs
 - 68.4M trainable parameters (vs 200M+ in SOTA models)
-- 850 images/sec** throughput on single V100
-- Production-ready** with <25ms p99 latency
+- 850 images/sec throughput on single V100
+- Production-ready with <25ms p99 latency
 
 ## Performance Metrics
 
