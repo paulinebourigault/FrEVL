@@ -60,8 +60,6 @@ pip install -r requirements.txt
 python scripts/download_models.py --model frevl-base
 ```
 
-### Try It Now!
-
 #### Option 1: Web Interface
 ```bash
 # Launch Gradio demo
@@ -292,4 +290,4 @@ If you find FrEVL useful in your research, please cite:
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
----
+
